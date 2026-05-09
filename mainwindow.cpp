@@ -2,6 +2,8 @@
 #include <QSqlQuery>
 #include <QSqlError>
 #include <QDebug>
+#include <QMessageBox>
+#include <QProcess>
 
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
@@ -21,6 +23,26 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     this->widget_squad[2] =this->ui->widget_squad3;
     this->widget_squad[3] =this->ui->widget_squad4;
     this->widget_squad[4] =this->ui->widget_squad5;
+
+    // 업데이트 매니저 설정
+    updateManager = new UpdateManager(this);
+    connect(updateManager, &UpdateManager::updateAvailable, this, [this](QString version, QString url) {
+        qDebug() << "Update available:" << version << url;
+        // 필요 시 상태표시줄 등에 알림 표시 가능
+    });
+    connect(updateManager, &UpdateManager::downloadFinished, this, [this](QString filePath) {
+        if (QMessageBox::question(this, "Update Ready", 
+            "A new update has been downloaded. Restart and install now?") == QMessageBox::Yes) {
+            // updater.exe 실행 로직 (나중에 추가)
+            QProcess::startDetached("updater.exe", {filePath});
+            qApp->quit();
+        }
+    });
+    connect(updateManager, &UpdateManager::errorOccurred, this, [](QString error) {
+        qDebug() << "UpdateManager error:" << error;
+    });
+
+    updateManager->startUpdateCheck();
 
     // DB 연결
     QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE");

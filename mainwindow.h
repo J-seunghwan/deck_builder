@@ -5,6 +5,7 @@
 #include <QListWidgetItem>
 
 #include "characterslotwidget.h"
+#include "updatemanager.h"
 
 #define MAX_SQUAD_SIZE 5
 
@@ -40,6 +41,7 @@ private:
     QMap<QString, QStringList> map_filter;
     QList<SquadMember> squad;
     CharacterSlotWidget *widget_squad[MAX_SQUAD_SIZE];
+    UpdateManager *updateManager;
 
 private slots:
     void onFilterButtonToggled(bool checked);
@@ -47,3 +49,4 @@ private slots:
     void onSquadClicked(CharacterSlotWidget *widget_member);
 };
 #endif // MAINWINDOW_H
+

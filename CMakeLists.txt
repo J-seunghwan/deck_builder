@@ -5,7 +5,7 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets LinguistTools Sql Network)
 
 qt_standard_project_setup()
 
-set(PROJECT_VERSION "1.0.0")
+set(PROJECT_VERSION "1.1.0")
 add_definitions(-DAPP_VERSION="${PROJECT_VERSION}")
 
 qt_add_executable(Deck_Builder
@@ -16,7 +16,12 @@ qt_add_executable(Deck_Builder
     mainwindow.ui
     character_slot_widget.ui
     characterslotwidget.h characterslotwidget.cpp
+    updatemanager.h updatemanager.cpp
 )
+
+# Updater executable
+add_executable(updater WIN32 updater_main.cpp)
+target_link_libraries(updater PRIVATE Qt::Core)
 
 qt_add_translations(
     TARGETS Deck_Builder

@@ -189,13 +189,10 @@ class DBManager:
         only_new = True 일 때 기존 db에서 없는 니케만 가져옴
         '''
         # DB에서 기존 (이름, 티어) 정보 가져오기
-        existing_nikkes = set()
-        if only_new:
-            self.db_cursor.execute(f"SELECT {self.db_name}, {self.db_tier} FROM nikke_info_table")
-            existing_nikkes = set(self.db_cursor.fetchall())
+        self.db_cursor.execute(f"SELECT {self.db_name}, {self.db_tier} FROM nikke_info_table")
+        existing_nikkes = set(self.db_cursor.fetchall())
 
-        # 니케 리스트 가져오기. 후에 개별 니케 페이지에 접속.
-        # 니케 슬릇에 적용된 css로 전부 가져와서 리스트로 만듦
+        # 니케 리스트 가져오기
         self.wait(By.CSS_SELECTOR, "[class='cursor-pointer relative nikkes-all-item h-[180px] max-h-[180px] w-[102px] max-w-[22%] my-[4.5px] mx-[5px]']")
         item_list = self.driver.find_elements(By.CSS_SELECTOR, "[class='cursor-pointer relative nikkes-all-item h-[180px] max-h-[180px] w-[102px] max-w-[22%] my-[4.5px] mx-[5px]']")
         print(f"도감에 등록된 니케 총 {len(item_list)}개")
@@ -207,303 +204,209 @@ class DBManager:
             self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", temp)
             time.sleep(2)
 
-        # 니케 데이터 모음용
-        nikke_db_list: list[dict] = []
-        target_indices = []
+        # 1단계: 전체 리스트에서 이름과 티어 파악 및 새로운 니케 체크
+        nikke_list_info = []
+        new_nikke_found = False
 
-        # 우선 니케들 개별 정리
-        for i, item in enumerate(item_list):
-            # 니케 이름 가져오기
+        for item in item_list:
             el_span = item.find_element(By.XPATH, "./div[1]/span[1]")
             text_name = el_span.text
 
-            # 블라블라링크 니케 목록에서 티어 확인 - 색깔로 티어 분석
             text_tier = ""
             try:
                 tier_div = item.find_elements(By.TAG_NAME, "div")
                 for div in tier_div:
                     class_content = div.get_attribute("class")
                     if class_content:
-                        if "yellow" in class_content:
-                            text_tier = "SSR"
-                            break
-                        elif "purple" in class_content:
-                            text_tier = "SR"
-                            break
-                        elif "blue" in class_content:
-                            text_tier = "R"
-                            break
-            except Exception as e:
-                print(f"err - {e}")
-                # breakpoint()
+                        if "yellow" in class_content: text_tier = "SSR"; break
+                        elif "purple" in class_content: text_tier = "SR"; break
+                        elif "blue" in class_content: text_tier = "R"; break
+            except: pass
 
-            # 기본 니케 프로필 이미지 가져오기
-            file_name = f"resource/{text_name.replace(':', '-')}_profile.webp"
+            nikke_list_info.append((text_name, text_tier))
+            if (text_name, text_tier) not in existing_nikkes:
+                new_nikke_found = True
 
-            nikke_db_list.append({
-                "name": text_name,
-                "img_path":file_name # 프로필 이미지 저장한 경로
-            })
+        if not new_nikke_found:
+            print("새로운 니케가 없습니다.")
+            return
 
-            # DB에 없는 경우에만 파싱 대상으로 등록
-            if not only_new or (text_name, text_tier) not in existing_nikkes:
-                target_indices.append(i)
+        print("새로운 니케 발견! DB 순서 정렬을 위해 재구축을 시작합니다.")
 
-        print(f"새로 수집할 니케: {len(target_indices)}개")
+        # 2단계: 기존 테이블 백업 및 새 테이블 생성
+        self.db_cursor.execute("ALTER TABLE nikke_info_table RENAME TO nikke_info_table_legacy")
+        self.createDBTable() # 새 nikke_info_table 생성
+        self.db_connection.commit()
 
-        # 개별 니케 파싱
-        for i in target_indices:
-            print(f"현재 {i+1}번째 니케 데이터 수집중")
+        # 3단계: 순서대로 데이터 채우기
+        for i, (name, tier) in enumerate(nikke_list_info):
+            # 기존에 있던 니케인지 확인
+            self.db_cursor.execute("SELECT * FROM nikke_info_table_legacy WHERE Name=? AND Tier=?", (name, tier))
+            legacy_data = self.db_cursor.fetchone()
 
-            # 니케 상세페이지로 갔다가 다시 돌아왔을 때의 html을 기준으로 해야하기 때문에 매번 데이터 갱신
-            current_item_list = self.driver.find_elements(By.CSS_SELECTOR, "[class='cursor-pointer relative nikkes-all-item h-[180px] max-h-[180px] w-[102px] max-w-[22%] my-[4.5px] mx-[5px]']")
-            target_item = current_item_list[i]
-
-            # 요소가 화면 아래쪽에 있을 수 있기 때문에 해당 요소가 화면에 위치하도록 스크롤 움직이기
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", target_item)
-            time.sleep(1)
-
-            # 해당 니케 상세페이지로 접속
-            target_item.click()
-            time.sleep(2)
-
-            # ==info
-            # el_info = self.driver.find_element(By.CSS_SELECTOR, "[class='charinfo']")
-
-            # 레어도 - R, SR, SSR
-            el_tier = self.driver.find_element(By.XPATH, '//*[@id="nikkes-basics"]/div[2]/div[2]/p/img')
-            url_tier = el_tier.get_attribute("src")
-            text_tier = ""
-            if url_tier == "https://sg-tools-cdn.blablalink.com/my-75/ey-25/014d90279e0ca7278b0b8f7e9094a8dd.webp":
-                text_tier = "SSR"
-            elif url_tier == "https://sg-tools-cdn.blablalink.com/kr-06/ua-37/64ec71645699f5fce79d98cfc20a525f.webp":
-                text_tier = "SR"
-            elif url_tier == "https://sg-tools-cdn.blablalink.com/ik-36/jc-49/1c5d999c42ed640c95da540af7578667.webp":
-                text_tier = "R"
+            if legacy_data:
+                # 기존 데이터가 있으면 복사 (id 제외)
+                columns = [
+                    self.db_name, self.db_path_img_profile, self.db_tier, self.db_squad, self.db_code,
+                    self.db_weapon_type, self.db_weapon_magazine_capacity, self.db_weapon_reload_time,
+                    self.db_weapon_operation_type, self.db_weapon_description, self.db_class, self.db_company,
+                    self.db_skill_1_name, self.db_skill_1_description, self.db_skill_2_name, 
+                    self.db_skill_2_description, self.db_skill_bust_name, self.db_skill_bust_step,
+                    self.db_skill_bust_time, self.db_skill_bust_description
+                ]
+                col_str = ", ".join(columns)
+                placeholders = ", ".join(["?" for _ in columns])
+                
+                # legacy_data[0]은 id이므로 제외
+                self.db_cursor.execute(f"INSERT INTO nikke_info_table ({col_str}) VALUES ({placeholders})", legacy_data[1:])
+                print(f"[{i+1}/{len(item_list)}] {name} ({tier}) 데이터 복사 완료")
             else:
-                print(f"Error tier - {url_tier}")
+                # 새로운 니케면 상세 페이지 크롤링
+                print(f"[{i+1}/{len(item_list)}] {name} ({tier}) 상세 정보 수집 시작")
+                
+                # 상세 페이지 접속
+                current_item_list = self.driver.find_elements(By.CSS_SELECTOR, "[class='cursor-pointer relative nikkes-all-item h-[180px] max-h-[180px] w-[102px] max-w-[22%] my-[4.5px] mx-[5px]']")
+                target_item = current_item_list[i]
+                self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", target_item)
+                time.sleep(1)
+                target_item.click()
+                time.sleep(3)
 
-            # 상세 페이지에서 확인한 티어로 최종 중복 체크
-            if only_new and (nikke_db_list[i].get("name"), text_tier) in existing_nikkes:
-                print(f"{nikke_db_list[i].get('name')} ({text_tier})은 이미 DB에 존재하여 건너뜁니다.")
-                # 이전 페이지 가기
+                # 상세 정보 파싱
+                parsed_data = self._parseNikkeDetail(name)
+                
+                # DB 삽입
+                columns = list(parsed_data.keys())
+                col_str = ", ".join(columns)
+                placeholders = ", ".join([f":{c}" for c in columns])
+                self.db_cursor.execute(f"INSERT INTO nikke_info_table ({col_str}) VALUES ({placeholders})", parsed_data)
+                
+                # 리스트 페이지로 복귀
                 el_prev_page_btn = self.driver.find_element(By.XPATH, '//*[@id="layout-content"]/div/div[1]/div/div[1]')
                 el_prev_page_btn.click()
                 time.sleep(5)
-                continue
+                print(f"[{i+1}/{len(item_list)}] {name} ({tier}) 상세 정보 수집 및 저장 완료")
 
-            # 스쿼드 이름
-            el_squad = self.driver.find_element(By.XPATH, '//*[@id="nikkes-basics"]/div[2]/div[2]/div/p/span')
-            text_squad = el_squad.text
-            
-            # 속성 - 전격, 작열, 풍압, 수냉, 철갑
-            el_code = self.driver.find_element(By.XPATH, '//*[@id="nikkes-basics"]/div[2]/div[3]/div[1]/p[1]/img')
-            url_code = el_code.get_attribute("src")
-            text_code = ""
-            if "code-fire" in url_code:
-                text_code = "작열"
-            elif "code-water" in url_code:
-                text_code = "수냉"
-            elif "code-electronic" in url_code:
-                text_code = "전격"
-            elif "code-wind" in url_code:
-                text_code = "풍압"
-            elif "code-iron" in url_code:
-                text_code = "철갑"
-            else:
-                print(f"Error code - {url_code}")
+            self.db_connection.commit()
 
-            # 클래스 - 화력형, 방어형, 지원형
-            el_class = self.driver.find_element(By.XPATH, '//*[@id="nikkes-basics"]/div[2]/div[3]/div[3]/p[1]/img')
-            url_class = el_class.get_attribute("src")
-            text_class = ""
-            if url_class == "https://sg-tools-cdn.blablalink.com/oo-76/ac-09/6337300758895c79f9afe8139500adcf.webp":
-                text_class = "화력형"
-            elif url_class == "https://sg-tools-cdn.blablalink.com/po-20/kg-32/6c30fdc2d204905edd388fc958359ec3.webp":
-                text_class = "방어형"
-            elif url_class == "https://sg-tools-cdn.blablalink.com/qn-96/ng-53/e0ff69fe9e3cf29c55232d3590135811.webp":
-                text_class = "지원형"
-            else:
-                print(f"Error class - {url_code}")
+        # 4단계: 레거시 테이블 삭제
+        self.db_cursor.execute("DROP TABLE nikke_info_table_legacy")
+        self.db_connection.commit()
+        print("DB 순서 정렬 및 업데이트 완료.")
 
-            # 기업 - 엘리시온, 미실리스, 테트라, 필그림, 어브노멀
-            el_company = self.driver.find_element(By.XPATH, '//*[@id="nikkes-basics"]/div[2]/div[3]/div[4]/p[1]/img')
-            url_company = el_company.get_attribute("src")
-            text_company = ""
-            if url_company == "https://sg-tools-cdn.blablalink.com/kz-78/eh-05/4aebd6d57c8afd17d334f37130ddc6e1.webp":
-                text_company = "엘리시온"
-            elif url_company == "https://sg-tools-cdn.blablalink.com/ng-48/pf-92/f3d8f861af997ddc5e1ee81b715ae314.webp":
-                text_company = "미실리스"
-            elif url_company == "https://sg-tools-cdn.blablalink.com/pn-18/ad-80/8c41a47786bc43a7db71bd7218f4989d.webp":
-                text_company = "테트라"
-            elif url_company == "https://sg-tools-cdn.blablalink.com/ru-87/lb-68/29d8e5c949e2141795446ca64a867b9b.webp":
-                text_company = "필그림"
-            elif url_company == "https://sg-tools-cdn.blablalink.com/ub-57/vz-56/2e913befc4fc5e84f9807f8a455232dc.webp":
-                text_company = "어브노멀"
-            else:
-                print(f"Error company - {url_company}")
+    def _parseNikkeDetail(self, name):
+        '''
+        니케 상세 페이지에서 정보를 파싱하여 dict로 반환
+        '''
+        # 레어도
+        el_tier = self.driver.find_element(By.XPATH, '//*[@id="nikkes-basics"]/div[2]/div[2]/p/img')
+        url_tier = el_tier.get_attribute("src")
+        text_tier = ""
+        if "014d90279e0ca7278b0b8f7e9094a8dd" in url_tier: text_tier = "SSR"
+        elif "64ec71645699f5fce79d98cfc20a525f" in url_tier: text_tier = "SR"
+        elif "1c5d999c42ed640c95da540af7578667" in url_tier: text_tier = "R"
 
-            # 버스트 단계 - 1,2,3,A
-            el_bust_step = self.driver.find_element(By.XPATH, '//*[@id="nikkes-basics"]/div[2]/div[3]/div[5]/p[1]/img')
-            url_bust_step = el_bust_step.get_attribute("src")
-            text_bust_step = ""
-            if url_bust_step == "https://sg-tools-cdn.blablalink.com/ze-16/nw-66/448005ff9513c9a8afabbece6ad2a05b.webp":
-                text_bust_step = "I"
-            elif url_bust_step == "https://sg-tools-cdn.blablalink.com/bl-85/yu-54/50f0e38e5306ba4ddae04e494921216a.webp":
-                text_bust_step = "II"
-            elif url_bust_step == "https://sg-tools-cdn.blablalink.com/rz-48/js-42/3b98d581bb5776454e084075adf00c4c.webp":
-                text_bust_step = "III"
-            elif url_bust_step == "https://sg-tools-cdn.blablalink.com/gb-87/nw-26/25bb6a298db42bf89464714a7fd6f159.webp":
-                text_bust_step = "A"
-            else:
-                print(f"Error bust step - {url_class}")
+        # 스쿼드 이름
+        el_squad = self.driver.find_element(By.XPATH, '//*[@id="nikkes-basics"]/div[2]/div[2]/div/p/span')
+        text_squad = el_squad.text
+        
+        # 속성
+        el_code = self.driver.find_element(By.XPATH, '//*[@id="nikkes-basics"]/div[2]/div[3]/div[1]/p[1]/img')
+        url_code = el_code.get_attribute("src")
+        text_code = ""
+        if "code-fire" in url_code: text_code = "작열"
+        elif "code-water" in url_code: text_code = "수냉"
+        elif "code-electronic" in url_code: text_code = "전격"
+        elif "code-wind" in url_code: text_code = "풍압"
+        elif "code-iron" in url_code: text_code = "철갑"
 
-            # 무기 상세정보 조회 - SMG, RL, AR, SG, SR, MG
-            el_weapon_btn = self.driver.find_element(By.XPATH, '//*[@id="nikkes-basics"]/div[2]/div[3]/div[2]')
-            el_weapon_btn.click()
-            time.sleep(2)
+        # 클래스
+        el_class = self.driver.find_element(By.XPATH, '//*[@id="nikkes-basics"]/div[2]/div[3]/div[3]/p[1]/img')
+        url_class = el_class.get_attribute("src")
+        text_class = ""
+        if "6337300758895c79f9afe8139500adcf" in url_class: text_class = "화력형"
+        elif "6c30fdc2d204905edd388fc958359ec3" in url_class: text_class = "방어형"
+        elif "e0ff69fe9e3cf29c55232d3590135811" in url_class: text_class = "지원형"
 
-            # 무기 종류
-            el_weapon_type = self.driver.find_element(By.XPATH,'//*[@id="nikkes-weapon"]/div/div/div[1]/p[1]/span')
-            text_weapon_type = el_weapon_type.text
+        # 기업
+        el_company = self.driver.find_element(By.XPATH, '//*[@id="nikkes-basics"]/div[2]/div[3]/div[4]/p[1]/img')
+        url_company = el_company.get_attribute("src")
+        text_company = ""
+        if "4aebd6d57c8afd17d334f37130ddc6e1" in url_company: text_company = "엘리시온"
+        elif "f3d8f861af997ddc5e1ee81b715ae314" in url_company: text_company = "미실리스"
+        elif "8c41a47786bc43a7db71bd7218f4989d" in url_company: text_company = "테트라"
+        elif "29d8e5c949e2141795446ca64a867b9b" in url_company: text_company = "필그림"
+        elif "2e913befc4fc5e84f9807f8a455232dc" in url_company: text_company = "어브노멀"
 
-            # 무기 최대 장탄수
-            el_weapon_magazine_capacity = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[2]/div[2]/div/div[1]/p[1]/span[2]')
-            text_weapon_magazine_capacity = el_weapon_magazine_capacity.text
+        # 버스트 단계
+        el_bust_step = self.driver.find_element(By.XPATH, '//*[@id="nikkes-basics"]/div[2]/div[3]/div[5]/p[1]/img')
+        url_bust_step = el_bust_step.get_attribute("src")
+        text_bust_step = ""
+        if "448005ff9513c9a8afabbece6ad2a05b" in url_bust_step: text_bust_step = "I"
+        elif "50f0e38e5306ba4ddae04e494921216a" in url_bust_step: text_bust_step = "II"
+        elif "3b98d581bb5776454e084075adf00c4c" in url_bust_step: text_bust_step = "III"
+        elif "25bb6a298db42bf89464714a7fd6f159" in url_bust_step: text_bust_step = "A"
 
-            # 무기 재장전 시간
-            el_weapon_reload_time = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[2]/div[2]/div/div[1]/p[2]/span[2]')
-            text_weapon_reload_time:str = el_weapon_reload_time.text
+        # 무기 정보
+        el_weapon_btn = self.driver.find_element(By.XPATH, '//*[@id="nikkes-basics"]/div[2]/div[3]/div[2]')
+        el_weapon_btn.click()
+        time.sleep(2)
 
-            # 무기 조작타입
-            el_weapon_operation_type = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[2]/div[2]/div/div[1]/p[3]/span[2]')
-            text_weapon_operation_type = el_weapon_operation_type.text
+        text_weapon_type = self.driver.find_element(By.XPATH,'//*[@id="nikkes-weapon"]/div/div/div[1]/p[1]/span').text
+        text_weapon_magazine_capacity = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[2]/div[2]/div/div[1]/p[1]/span[2]').text
+        text_weapon_reload_time = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[2]/div[2]/div/div[1]/p[2]/span[2]').text.split("s")[0].strip()
+        text_weapon_operation_type = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[2]/div[2]/div/div[1]/p[3]/span[2]').text
+        text_weapon_spec = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[2]/div[2]/div/div[2]/div').text
 
-            # 무기 설명
-            el_weapon_spec = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[2]/div[2]/div/div[2]/div')
-            text_weapon_spec = el_weapon_spec.text
+        self.driver.find_element(By.XPATH, '/html/body/div[4]/div/a').click() # 닫기
+        time.sleep(1)
 
-            # 무기 정보 창 닫기
-            el_weapon_close_btn = self.driver.find_element(By.XPATH, '/html/body/div[4]/div/a')
-            el_weapon_close_btn.click()
+        # 스킬 정보
+        el_skill = self.driver.find_element(By.CSS_SELECTOR, "[id='nikkes-weapon']")
+        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el_skill)
+        time.sleep(2)
 
-            time.sleep(1)
+        # 스킬 1
+        text_skill_1_name = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[1]/div[1]/div[1]/p').text
+        self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[1]/div[1]/div[1]/div[2]/a[4]').click()
+        time.sleep(0.5)
+        text_skill_1_spec = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[1]/div[1]/div[2]/div').text
+        
+        # 스킬 2
+        text_skill_2_name = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[2]/div[1]/div[1]/p').text
+        self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[2]/div[1]/div[1]/div[2]/a[4]').click()
+        time.sleep(0.5)
+        text_skill_2_spec = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[2]/div[1]/div[2]/div').text
 
-            # ==skill
-            # 스킬 버튼 눌러야 해서 중간까지 스크롤
-            el_skill = self.driver.find_element(By.CSS_SELECTOR, "[id='nikkes-weapon']")
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el_skill)
-            time.sleep(2)
+        # 버스트
+        text_skill_bust_name = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[3]/div[1]/div[1]/p').text
+        text_skill_bust_time = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[3]/div[1]/div[1]/div[3]/span').text.split("s")[0].strip()
+        self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[3]/div[1]/div[1]/div[2]/a[4]').click()
+        time.sleep(0.5)
+        text_skill_bust_spec = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[3]/div[1]/div[2]/div').text
 
-            # 스킬 1 이름
-            el_skill_1_name = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[1]/div[1]/div[1]/p')
-            text_skill_1_name = el_skill_1_name.text
-            # 스킬 1 레벨 10 설정
-            el_skill_1_btn = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[1]/div[1]/div[1]/div[2]/a[4]')
-            el_skill_1_btn.click()
-            time.sleep(0.5)
-            # 스킬 1 설명
-            el_skill_1_spec = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[1]/div[1]/div[2]/div')
-            text_skill_1_spec = el_skill_1_spec.text
-            
-            # 스킬 2 이름
-            el_skill_2_name = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[2]/div[1]/div[1]/p')
-            text_skill_2_name = el_skill_2_name.text
-            # 스킬 2 레벨 10 설정
-            el_skill_2_btn = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[2]/div[1]/div[1]/div[2]/a[4]')
-            el_skill_2_btn.click()
-            time.sleep(0.5)
-            # 스킬 2 설명
-            el_skill_2_spec = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[2]/div[1]/div[2]/div')
-            text_skill_2_spec = el_skill_2_spec.text
-
-            # 버스트 스킬 이름
-            el_skill_bust_name = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[3]/div[1]/div[1]/p')
-            text_skill_bust_name = el_skill_bust_name.text
-            # 버스트 스킬 쿨타임
-            el_skill_bust_time = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[3]/div[1]/div[1]/div[3]/span')
-            text_skill_bust_time:str = el_skill_bust_time.text
-            # 버스트 스킬 레벨 10 설정
-            el_skill_bust_btn = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[3]/div[1]/div[1]/div[2]/a[4]')
-            el_skill_bust_btn.click()
-            time.sleep(0.5)
-            # 버스트 스킬 설명
-            el_skill_bust_spec = self.driver.find_element(By.XPATH, '//*[@id="nikkes-weapon"]/div/div/div[3]/div[1]/div[2]/div')
-            text_skill_bust_spec = el_skill_bust_spec.text
-
-            text_weapon_reload_time = text_weapon_reload_time.split("s")[0].strip()
-            text_skill_bust_time = text_skill_bust_time.split("s")[0].strip()
-
-            nikke_data = dict({
-                self.db_name : nikke_db_list[i].get("name"),
-                self.db_path_img_profile : nikke_db_list[i].get("img_path"),
-                self.db_tier : text_tier,
-                self.db_squad : text_squad,
-                self.db_code : text_code,
-                self.db_weapon_type : text_weapon_type,
-                self.db_weapon_magazine_capacity : int(text_weapon_magazine_capacity),# int
-                self.db_weapon_reload_time : text_weapon_reload_time,# int 단위 - 초
-                self.db_weapon_operation_type : text_weapon_operation_type,
-                self.db_weapon_description : text_weapon_spec,
-                self.db_class : text_class,
-                self.db_company : text_company,
-                self.db_skill_bust_step : text_bust_step,
-                self.db_skill_1_name : text_skill_1_name,
-                self.db_skill_1_description : text_skill_1_spec,
-                self.db_skill_2_name : text_skill_2_name,
-                self.db_skill_2_description : text_skill_2_spec,
-                self.db_skill_bust_name : text_skill_bust_name,
-                self.db_skill_bust_time : text_skill_bust_time,# int 단위 - 초
-                self.db_skill_bust_description : text_skill_bust_spec
-                })
-            
-            self.db_cursor.execute(f'''
-            INSERT INTO nikke_info_table ({self.db_name},
-                            {self.db_path_img_profile},
-                            {self.db_tier},
-                            {self.db_squad},
-                            {self.db_code},
-                            {self.db_weapon_type},
-                            {self.db_weapon_magazine_capacity},
-                            {self.db_weapon_reload_time},
-                            {self.db_weapon_operation_type},
-                            {self.db_weapon_description},
-                            {self.db_class},
-                            {self.db_company},
-                            {self.db_skill_bust_step},
-                            {self.db_skill_1_name},
-                            {self.db_skill_1_description},
-                            {self.db_skill_2_name},
-                            {self.db_skill_2_description},
-                            {self.db_skill_bust_name},
-                            {self.db_skill_bust_time},
-                            {self.db_skill_bust_description})
-                    VALUES (:{self.db_name},
-                            :{self.db_path_img_profile},
-                            :{self.db_tier},
-                            :{self.db_squad},
-                            :{self.db_code},
-                            :{self.db_weapon_type},
-                            :{self.db_weapon_magazine_capacity},
-                            :{self.db_weapon_reload_time},
-                            :{self.db_weapon_operation_type},
-                            :{self.db_weapon_description},
-                            :{self.db_class},
-                            :{self.db_company},
-                            :{self.db_skill_bust_step},
-                            :{self.db_skill_1_name},
-                            :{self.db_skill_1_description},
-                            :{self.db_skill_2_name},
-                            :{self.db_skill_2_description},
-                            :{self.db_skill_bust_name},
-                            :{self.db_skill_bust_time},
-                            :{self.db_skill_bust_description})''', nikke_data)
-            self.db_connection.commit()# db 적용
-
-            # 이전 페이지 가기
-            el_prev_page_btn = self.driver.find_element(By.XPATH, '//*[@id="layout-content"]/div/div[1]/div/div[1]')
-            el_prev_page_btn.click()
-            time.sleep(5)
+        return {
+            self.db_name: name,
+            self.db_path_img_profile: f"resource/{name.replace(':', '-')}_profile.webp",
+            self.db_tier: text_tier,
+            self.db_squad: text_squad,
+            self.db_code: text_code,
+            self.db_weapon_type: text_weapon_type,
+            self.db_weapon_magazine_capacity: int(text_weapon_magazine_capacity),
+            self.db_weapon_reload_time: text_weapon_reload_time,
+            self.db_weapon_operation_type: text_weapon_operation_type,
+            self.db_weapon_description: text_weapon_spec,
+            self.db_class: text_class,
+            self.db_company: text_company,
+            self.db_skill_bust_step: text_bust_step,
+            self.db_skill_1_name: text_skill_1_name,
+            self.db_skill_1_description: text_skill_1_spec,
+            self.db_skill_2_name: text_skill_2_name,
+            self.db_skill_2_description: text_skill_2_spec,
+            self.db_skill_bust_name: text_skill_bust_name,
+            self.db_skill_bust_time: text_skill_bust_time,
+            self.db_skill_bust_description: text_skill_bust_spec
+        }
 
     def DownloadResource(self):
         '''
@@ -564,7 +467,7 @@ class DBManager:
             else:
                 print(f"프로필 이미지 Http error - {response.status_code}")
 
-    def updateSkillDB(self):
+    def updateSkillDB(self, skill_file):
         '''
         필수 - 크롤링해서 니케 기본 정보가 db로 만들어진 후, 진행해야함
         니케 정보에서 스킬 키워드 생성 및 업데이트
@@ -572,7 +475,7 @@ class DBManager:
         '''
         # 키워드 파일 경로 (프로젝트 루트)
         project_root = self.path_resource.parent
-        keyword_file_path = project_root / "nikke_skill_keyward.txt"
+        keyword_file_path = project_root / skill_file
 
         if not keyword_file_path.exists():
             print(f"에러: {keyword_file_path} 파일을 찾을 수 없습니다.")
@@ -722,5 +625,9 @@ class DBManager:
 
 manager = DBManager('./nikke_info.db')
 
-manager.createDBTable()
-manager.updateSkillDB()
+#manager.createDBTable()
+#manager.accessPage()
+#manager.crawlingAllUpdateDB()
+#manager.DownloadResource()
+
+#manager.updateSkillDB("nikke_skill_keyward.txt")

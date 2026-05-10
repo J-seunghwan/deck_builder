@@ -464,6 +464,11 @@ class DBManager:
         필수 - 크롤링해서 니케 기본 정보가 db로 만들어진 후, 진행해야함
         니케 정보에서 스킬 키워드 생성 및 업데이트
         정보와 스킬 키워드 연결 table도 업데이트
+
+        nikke_skill_keyward.txt에 스킬 키워드 목록을 작성하면 해당 정보로 db 구축 및 니케와 매칭
+        [키워드 분류 이름]
+        - 키워드 1
+        - 키워드 2[원문: ~~]
         '''
         # 키워드 파일 경로 (프로젝트 루트)
         project_root = self.path_resource.parent

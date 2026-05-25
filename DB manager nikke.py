@@ -622,9 +622,9 @@ class DBManager:
 
 manager = DBManager('./nikke_info.db')
 
-#manager.createDBTable()
-#manager.accessPage()
-#manager.crawlingAllUpdateDB()
-#manager.DownloadResource()
+manager.createDBTable()
+manager.accessPage()
+manager.crawlingAllUpdateDB()
+manager.DownloadResource()
 
-#manager.updateSkillDB("nikke_skill_keyward.txt")
+manager.updateSkillDB("nikke_skill_keyward.txt")

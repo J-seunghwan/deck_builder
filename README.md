@@ -1,8 +1,6 @@
 # 승리의 여신 : 니케 덱 빌더
 
-<video>
-    <source src="./readme_intro.mp4" controls>
-</video>
+![demo](intro_use.gif)
 
 니케 캐릭터 정보를 DB로 관리하고, 스킬 키워드 기반으로 필터링할 수 있는 데스크탑 애플리케이션입니다.
 

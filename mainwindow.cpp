@@ -4,6 +4,7 @@
 #include <QDebug>
 #include <QMessageBox>
 #include <QProcess>
+#include <QCoreApplication>
 
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
@@ -44,13 +45,14 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
 
     updateManager->startUpdateCheck();
 
-    // DB 연결
+    // DB 연결 (실행 프로그램(exe)과 같은 경로에서 로드)
     QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE");
-    db.setDatabaseName("nikke_info.db");
+    QString db_path = QCoreApplication::applicationDirPath() + "/nikke_info.db";
+    db.setDatabaseName(db_path);
 
     if(!db.open()){
         qDebug() << "DB 연결 실패:" << db.lastError().text();
-        //todo - 팝업창으로 알리기
+        QMessageBox::critical(this, "DB 오류", QString("데이터베이스 파일을 열 수 없습니다:\n%1\n%2").arg(db_path, db.lastError().text()));
         return;
     }
 
@@ -58,34 +60,34 @@ MainWindow::MainWindow(QWidget *parent): QMainWindow(parent), ui(new Ui::MainWin
     QString sql_command = "SELECT id,Name,Path_img_profile FROM nikke_info_table";
     this->queryAndUpdateWidget(sql_command);
 
-    // 스킬들 필터용 버튼 동적 생성
-    sql_command = "SELECT keyword_name, category FROM skill_keywords_table";
+    // 스킬들 필터용 버튼 동적 생성 (9대 카테고리 마스터 테이블 기반)
+    sql_command = "SELECT id, category, keyword FROM skill_keyword_master_table ORDER BY category, id";
     QSqlQuery query;
     if(query.exec(sql_command)){
         while(query.next()){
-            QString keyword_name = query.value(0).toString();
+            int keyword_id = query.value(0).toInt();
             QString category = query.value(1).toString();
+            QString keyword = query.value(2).toString();
 
-            // 표시용 텍스트 ( [원문: ...] 제거 및 증가/감소 기호 변경)
-            QString display_text = keyword_name;
-            if(display_text.contains(" [원문:")) {
-                display_text = display_text.split(" [원문:").first();
-            }
-            display_text.replace("증가", "▲");
-            display_text.replace("감소", "▼");
+            // 표시용 텍스트 (마스터 테이블 원본 키워드 그대로 적용)
+            QString display_text = keyword;
 
             //버튼 생성 및 설정
             QPushButton *btn = new QPushButton(display_text, this);
             btn->setCheckable(true);
-            btn->setProperty("original_keyword", keyword_name); // 원본 키워드 저장
+            btn->setProperty("keyword_id", keyword_id);       // 키워드 ID 저장
+            btn->setProperty("original_keyword", keyword);    // 원본 키워드 저장
+            btn->setProperty("keyword_category", category);   // 카테고리 저장
 
             QGroupBox *groupBox = nullptr;
-            if(category == "공격") groupBox = ui->groupBox_attack;
-            else if(category == "보호") groupBox = ui->groupBox_protection;
-            else if(category == "특수 능력") groupBox = ui->groupBox_mechanics;
-            else if(category == "제어") groupBox = ui->groupBox_control;
-            else if(category == "유틸리티") groupBox = ui->groupBox_utility;
-            else if(category == "발동 조건") groupBox = ui->groupBox_trigger;
+            if(category == "발동 시점") groupBox = ui->groupBox_trigger_timimg;
+            else if(category == "발동 조건") groupBox = ui->groupBox_trigger_condition;
+            else if(category == "적용 대상") groupBox = ui->groupBox_target;
+            else if(category == "효과 - 공격류") groupBox = ui->groupBox_attack;
+            else if(category == "효과 - 공격보조류") groupBox = ui->groupBox_attack_support;
+            else if(category == "효과 - 방어생존류") groupBox = ui->groupBox_defense;
+            else if(category == "효과 - 체력회복류") groupBox = ui->groupBox_healing;
+            else if(category == "효과 - 유틸리티류") groupBox = ui->groupBox_utility;
 
             if(groupBox){
                 if(!groupBox->layout()){
@@ -135,10 +137,6 @@ void MainWindow::onFilterButtonToggled(bool checked){
     QString filter_value = clickedButton->property("original_keyword").toString();
     if(filter_value.isEmpty()) filter_value = clickedButton->text();
 
-    // '증가' -> '▲', '감소' -> '▼' 치환 (DB의 기호 기반 키워드와 매칭하기 위함)
-    filter_value.replace("증가", "▲");
-    filter_value.replace("감소", "▼");
-
     if(checked){// 클릭해서 필터링 활성화시 동작
         this->map_filter[category].append(filter_value);
     }
@@ -151,20 +149,28 @@ void MainWindow::onFilterButtonToggled(bool checked){
 
     for(auto [key, values] : this->map_filter.asKeyValueRange()){
         if(!values.isEmpty()){
-            if(key == "공격" || key=="보호" || key=="특수 능력" || key=="제어" || key=="유틸리티" || key=="발동 조건"){
+            bool is_skill_category = (key == "발동 시점" || key == "발동 조건" || key == "적용 대상"
+                                      || key == "효과 - 공격류" || key == "효과 - 공격보조류" || key == "효과 - 방어생존류"
+                                      || key == "효과 - 체력회복류" || key == "효과 - 유틸리티류");
+            if(is_skill_category){
                 // 스킬 키워드는 선택된 모든 조건을 동시에 만족(AND)하는 니케를 찾아야 함
                 for(const QString &val : values){
+                    QString escaped_val = QString(val).replace("'", "''");
                     QString condition = QString("id IN ("
-                                            "SELECT nikke_id FROM nikke_keywords_table WHERE keyword_id IN ("
-                                                "SELECT id FROM skill_keywords_table WHERE keyword_name = '%1'"
+                                            "SELECT nikke_id FROM nikke_keyword_link_table WHERE keyword_id IN ("
+                                                "SELECT id FROM skill_keyword_master_table WHERE keyword = '%1' AND category = '%2'"
                                         "))")
-                                    .arg(val);
+                                    .arg(escaped_val, key);
                     sql_condition.append(condition);
                 }
             }
             else{
                 // 기본 속성(기업, 코드 등)은 해당 카테고리 내에서 하나라도 일치하면 됨 (OR)
-                QString condition = QString("%1 IN ('%2')").arg(key, values.join("','"));
+                QStringList escaped_values;
+                for(const QString &v : values){
+                    escaped_values.append(QString(v).replace("'", "''"));
+                }
+                QString condition = QString("%1 IN ('%2')").arg(key, escaped_values.join("','"));
                 sql_condition.append(condition);
             }
         }
@@ -228,12 +234,14 @@ QString MainWindow::getColumnName(QString str){
     else if(str == this->ui->groupBox_weapon->title()) return "Weapon_type";
     else if(str == this->ui->groupBox_company->title()) return "Company";
     else if(str == this->ui->groupBox_bust_step->title()) return "Bust_step";
-    else if(str == this->ui->groupBox_attack->title()) return "공격";
-    else if(str == this->ui->groupBox_protection->title()) return "보호";
-    else if(str == this->ui->groupBox_mechanics->title()) return "특수 능력";
-    else if(str == this->ui->groupBox_control->title()) return "제어";
-    else if(str == this->ui->groupBox_utility->title()) return "유틸리티";
-    else if(str == this->ui->groupBox_trigger->title()) return "발동 조건";
+    else if(str == this->ui->groupBox_trigger_timimg->title()) return "발동 시점";
+    else if(str == this->ui->groupBox_trigger_condition->title()) return "발동 조건";
+    else if(str == this->ui->groupBox_target->title()) return "적용 대상";
+    else if(str == this->ui->groupBox_attack->title()) return "효과 - 공격류";
+    else if(str == this->ui->groupBox_attack_support->title()) return "효과 - 공격보조류";
+    else if(str == this->ui->groupBox_defense->title()) return "효과 - 방어생존류";
+    else if(str == this->ui->groupBox_healing->title()) return "효과 - 체력회복류";
+    else if(str == this->ui->groupBox_utility->title()) return "효과 - 유틸리티류";
     else{
         qDebug() << "getColumnName() Error " << str;
         return "";

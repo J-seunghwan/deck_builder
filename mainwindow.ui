@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1280</width>
+    <width>1460</width>
     <height>900</height>
    </rect>
   </property>
@@ -228,7 +228,7 @@ border-width: 10px;</string>
        <widget class="QScrollArea" name="scrollArea_filter">
         <property name="minimumSize">
          <size>
-          <width>300</width>
+          <width>440</width>
           <height>70</height>
          </size>
         </property>
@@ -243,7 +243,7 @@ border-width: 10px;</string>
           <rect>
            <x>0</x>
            <y>0</y>
-           <width>298</width>
+           <width>438</width>
            <height>880</height>
           </rect>
          </property>
@@ -641,9 +641,9 @@ border-width: 10px;</string>
            </widget>
           </item>
           <item>
-           <widget class="QGroupBox" name="groupBox_attack">
+           <widget class="QGroupBox" name="groupBox_trigger_timimg">
             <property name="title">
-             <string>스킬 - 공격</string>
+             <string>스킬 - 발동 시점</string>
             </property>
             <layout class="QVBoxLayout" name="verticalLayout_3">
              <property name="spacing">
@@ -665,9 +665,9 @@ border-width: 10px;</string>
            </widget>
           </item>
           <item>
-           <widget class="QGroupBox" name="groupBox_protection">
+           <widget class="QGroupBox" name="groupBox_trigger_condition">
             <property name="title">
-             <string>스킬 - 보호</string>
+             <string>스킬 - 발동 조건</string>
             </property>
             <layout class="QVBoxLayout" name="verticalLayout_4">
              <property name="spacing">
@@ -689,11 +689,11 @@ border-width: 10px;</string>
            </widget>
           </item>
           <item>
-           <widget class="QGroupBox" name="groupBox_mechanics">
+           <widget class="QGroupBox" name="groupBox_target">
             <property name="title">
-             <string>스킬 - 특수 능력</string>
+             <string>스킬 - 적용 대상</string>
             </property>
-            <layout class="QVBoxLayout" name="verticalLayout_5">
+            <layout class="QVBoxLayout" name="verticalLayout_7">
              <property name="spacing">
               <number>3</number>
              </property>
@@ -713,24 +713,123 @@ border-width: 10px;</string>
            </widget>
           </item>
           <item>
-           <widget class="QGroupBox" name="groupBox_control">
+           <widget class="QGroupBox" name="groupBox_attack">
             <property name="title">
-             <string>스킬 - 제어</string>
+             <string>스킬 효과 - 공격류</string>
             </property>
+            <layout class="QVBoxLayout" name="verticalLayout_8">
+             <property name="spacing">
+              <number>3</number>
+             </property>
+             <property name="leftMargin">
+              <number>5</number>
+             </property>
+             <property name="topMargin">
+              <number>5</number>
+             </property>
+             <property name="rightMargin">
+              <number>5</number>
+             </property>
+             <property name="bottomMargin">
+              <number>5</number>
+             </property>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="groupBox_attack_support">
+            <property name="title">
+             <string>스킬 효과 - 공격보조류</string>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_6">
+             <property name="spacing">
+              <number>3</number>
+             </property>
+             <property name="leftMargin">
+              <number>5</number>
+             </property>
+             <property name="topMargin">
+              <number>5</number>
+             </property>
+             <property name="rightMargin">
+              <number>5</number>
+             </property>
+             <property name="bottomMargin">
+              <number>5</number>
+             </property>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="groupBox_defense">
+            <property name="title">
+             <string>스킬 효과 - 방어생존류</string>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_9">
+             <property name="spacing">
+              <number>3</number>
+             </property>
+             <property name="leftMargin">
+              <number>5</number>
+             </property>
+             <property name="topMargin">
+              <number>5</number>
+             </property>
+             <property name="rightMargin">
+              <number>5</number>
+             </property>
+             <property name="bottomMargin">
+              <number>5</number>
+             </property>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="groupBox_healing">
+            <property name="title">
+             <string>스킬 효과 - 체력회복류</string>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_10">
+             <property name="spacing">
+              <number>3</number>
+             </property>
+             <property name="leftMargin">
+              <number>5</number>
+             </property>
+             <property name="topMargin">
+              <number>5</number>
+             </property>
+             <property name="rightMargin">
+              <number>5</number>
+             </property>
+             <property name="bottomMargin">
+              <number>5</number>
+             </property>
+            </layout>
            </widget>
           </item>
           <item>
            <widget class="QGroupBox" name="groupBox_utility">
             <property name="title">
-             <string>스킬 - 유틸리티</string>
+             <string>스킬 효과 - 유틸리티류</string>
             </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QGroupBox" name="groupBox_trigger">
-            <property name="title">
-             <string>스킬 - 발동 조건</string>
-            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_11">
+             <property name="spacing">
+              <number>3</number>
+             </property>
+             <property name="leftMargin">
+              <number>5</number>
+             </property>
+             <property name="topMargin">
+              <number>5</number>
+             </property>
+             <property name="rightMargin">
+              <number>5</number>
+             </property>
+             <property name="bottomMargin">
+              <number>5</number>
+             </property>
+            </layout>
            </widget>
           </item>
          </layout>

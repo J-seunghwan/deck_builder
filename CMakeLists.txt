@@ -5,7 +5,7 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets LinguistTools Sql Network)
 
 qt_standard_project_setup()
 
-set(PROJECT_VERSION "1.1.1")
+set(PROJECT_VERSION "1.2.0")
 add_definitions(-DAPP_VERSION="${PROJECT_VERSION}")
 
 qt_add_executable(Deck_Builder
